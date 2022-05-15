@@ -1,34 +1,48 @@
-use case_conv::{to_lowercase, to_uppercase};
+use std::{fs::File, io::Read};
+
+use case_conv::{to_lowercase, to_lowercase2, to_uppercase, to_uppercase2};
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
-static ASCII: &str = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.";
-static UNICODE: &str = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. DÜis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.";
+pub fn conv(c: &mut Criterion) {
+    let mut ascii = String::new();
+    let mut unicode = String::new();
 
-pub fn lowercase(c: &mut Criterion) {
-    let mut g = c.benchmark_group("lowercase");
+    let mut ascii_file = File::open("benches/macbeth.ascii.txt").unwrap();
+    ascii_file.read_to_string(&mut ascii).unwrap();
 
-    g.bench_function("ascii_std", |b| b.iter(|| black_box(ASCII.to_lowercase())));
-    g.bench_function("ascii", |b| b.iter(|| black_box(to_lowercase(ASCII))));
-    g.bench_function("unicode_std", |b| {
-        b.iter(|| black_box(UNICODE.to_lowercase()))
-    });
-    g.bench_function("unicode", |b| b.iter(|| black_box(to_lowercase(UNICODE))));
+    let mut unicode_file = File::open("benches/macbeth.unicode.txt").unwrap();
+    unicode_file.read_to_string(&mut unicode).unwrap();
 
-    g.finish()
+    {
+        let mut g = c.benchmark_group("lowercase");
+
+        g.bench_function("ascii", |b| b.iter(|| to_lowercase(black_box(&ascii))));
+        g.bench_function("unicode", |b| b.iter(|| to_lowercase(black_box(&unicode))));
+
+        g.bench_function("ascii_std", |b| b.iter(|| black_box(&ascii).to_lowercase()));
+        g.bench_function("unicode_std", |b| {
+            b.iter(|| black_box(&unicode).to_lowercase())
+        });
+
+        g.bench_function("ascii2", |b| b.iter(|| to_lowercase2(black_box(&ascii))));
+        g.bench_function("unicode2", |b| b.iter(|| to_lowercase2(black_box(&unicode))));
+    }
+
+    {
+        let mut g = c.benchmark_group("uppercase");
+
+        g.bench_function("ascii", |b| b.iter(|| to_uppercase(black_box(&ascii))));
+        g.bench_function("unicode", |b| b.iter(|| to_uppercase(black_box(&unicode))));
+
+        g.bench_function("ascii_std", |b| b.iter(|| black_box(&ascii).to_uppercase()));
+        g.bench_function("unicode_std", |b| {
+            b.iter(|| black_box(&unicode).to_uppercase())
+        });
+
+        g.bench_function("ascii2", |b| b.iter(|| to_uppercase2(black_box(&ascii))));
+        g.bench_function("unicode2", |b| b.iter(|| to_uppercase2(black_box(&unicode))));
+    }
 }
 
-pub fn uppercase(c: &mut Criterion) {
-    let mut g = c.benchmark_group("uppercase");
-
-    g.bench_function("ascii_std", |b| b.iter(|| black_box(ASCII.to_uppercase())));
-    g.bench_function("ascii", |b| b.iter(|| black_box(to_uppercase(ASCII))));
-    g.bench_function("unicode_std", |b| {
-        b.iter(|| black_box(UNICODE.to_uppercase()))
-    });
-    g.bench_function("unicode", |b| b.iter(|| black_box(to_uppercase(UNICODE))));
-
-    g.finish()
-}
-
-criterion_group!(benches, lowercase, uppercase);
+criterion_group!(benches, conv);
 criterion_main!(benches);
