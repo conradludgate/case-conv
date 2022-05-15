@@ -10,7 +10,7 @@ checksum = "c38b6b6b79f671c25e1a3e785b7b82d7562ffc9cd3efdc98627e5668a2472490"
 
 [[package]]
 name = "case-conv"
-version = "0.1.4"
+version = "0.1.5"
 
 [[package]]
 name = "case-conv-fuzz"
