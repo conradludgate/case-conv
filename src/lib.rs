@@ -1,5 +1,4 @@
 #![doc = include_str!("../README.md")]
-
 #![feature(unicode_internals)]
 use core::unicode::conversions;
 
@@ -7,34 +6,31 @@ use core::unicode::conversions;
 pub fn to_lowercase(s: &str) -> String {
     let mut out = Vec::<u8>::with_capacity(s.len());
     let b = s.as_bytes();
-    let mut i = 0;
+
     const UNROLL: usize = 128;
-    while i + UNROLL < b.len() {
+    while out.len() + UNROLL <= b.len() {
+        let n = out.len() + UNROLL;
         // Safety:
         // we are working with ascii only at the moment
         // so we know the exact size of the buffer
         unsafe {
-            for j in i..i+UNROLL {
+            for j in out.len()..n {
                 if !b.get_unchecked(j).is_ascii() {
                     break
                 }
             }
-            for j in i..i+UNROLL {
+            for j in out.len()..n {
                 let end = out.as_mut_ptr().add(j);
                 core::ptr::write(end, b.get_unchecked(j).to_ascii_lowercase());
             }
+            out.set_len(n);
         }
-        i += UNROLL;
     }
-
-    // Safety: so far we have only written i ascii bytes
-    // so the length is known
-    unsafe { out.set_len(i) };
 
     // Safety: we know this is a valid char boundary since
     // 1. Our iterator guarantees that this is a valid byte
     // 2. From our loop we know this is the start of a utf8 scalar point
-    let rest = unsafe { s.get_unchecked(i..) };
+    let rest = unsafe { s.get_unchecked(out.len()..) };
 
     // Safety: We have written only valid ASCII to our vec
     let mut to = unsafe { String::from_utf8_unchecked(out) };
@@ -87,34 +83,30 @@ pub fn to_lowercase(s: &str) -> String {
 pub fn to_uppercase(s: &str) -> String {
     let mut out = Vec::<u8>::with_capacity(s.len());
     let b = s.as_bytes();
-    let mut i = 0;
     const UNROLL: usize = 128;
-    while i + UNROLL < b.len() {
+    while out.len() + UNROLL <= b.len() {
+        let n = out.len() + UNROLL;
         // Safety:
         // we are working with ascii only at the moment
         // so we know the exact size of the buffer
         unsafe {
-            for j in i..i+UNROLL {
+            for j in out.len()..n {
                 if !b.get_unchecked(j).is_ascii() {
                     break
                 }
             }
-            for j in i..i+UNROLL {
+            for j in out.len()..n {
                 let end = out.as_mut_ptr().add(j);
                 core::ptr::write(end, b.get_unchecked(j).to_ascii_uppercase());
             }
+            out.set_len(n);
         }
-        i += UNROLL;
     }
-
-    // Safety: so far we have only written i ascii bytes
-    // so the length is known
-    unsafe { out.set_len(i) };
 
     // Safety: we know this is a valid char boundary since
     // 1. Our iterator guarantees that this is a valid byte
     // 2. From our loop we know this is the start of a utf8 scalar point
-    let rest = unsafe { s.get_unchecked(i..) };
+    let rest = unsafe { s.get_unchecked(out.len()..) };
 
     // Safety: We have written only valid ASCII to our vec
     let mut to = unsafe { String::from_utf8_unchecked(out) };
@@ -171,6 +163,22 @@ mod tests {
         assert_eq!(to_lowercase("ΑΣΑ"), "ασα");
         assert_eq!(to_lowercase("ΑΣ'Α"), "ασ'α");
         assert_eq!(to_lowercase("ΑΣ''Α"), "ασ''α");
+    }
+
+
+    #[test]
+    fn long() {
+        let mut upper = str::repeat("A", 128);
+        let mut lower = str::repeat("a", 128);
+
+        assert_eq!(to_lowercase(&upper), lower);
+        assert_eq!(to_uppercase(&lower), upper);
+
+        upper.push('Σ');
+        lower.push('σ');
+
+        assert_eq!(to_lowercase(&upper), lower);
+        assert_eq!(to_uppercase(&lower), upper);
     }
 
     #[test]
