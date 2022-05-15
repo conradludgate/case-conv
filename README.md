@@ -12,17 +12,17 @@ Provides fast cases for ascii, but falls back to a unicode correct version if it
 > Tests performed on a Ryzen 5 3600X on Linux
 
 ```text
-lowercase/ascii         time:   [8.1783 us 8.3009 us 8.4188 us] *
-lowercase/unicode       time:   [8.3850 us 8.4944 us 8.5908 us] *
+lowercase/ascii         time:   [5.4363 us 5.4486 us 5.4629 us] *
+lowercase/unicode       time:   [5.5051 us 5.5135 us 5.5229 us] *
 
 lowercase/ascii_std     time:   [522.00 us 522.97 us 524.00 us]
 lowercase/unicode_std   time:   [520.60 us 521.19 us 521.83 us]
 ```
 
 ```text
-uppercase/ascii         time:   [5.3919 us 5.4112 us 5.4305 us] *
-uppercase/unicode       time:   [5.4151 us 5.4259 us 5.4371 us] *
+uppercase/ascii         time:   [5.3779 us 5.3837 us 5.3903 us] *
+uppercase/unicode       time:   [5.3809 us 5.3930 us 5.4073 us] *
 
-uppercase/ascii_std     time:   [446.56 us 447.98 us 449.36 us]
-uppercase/unicode_std   time:   [466.68 us 467.22 us 467.85 us]
+uppercase/ascii_std     time:   [441.45 us 442.01 us 442.64 us]
+uppercase/unicode_std   time:   [437.97 us 438.51 us 439.11 us]
 ```

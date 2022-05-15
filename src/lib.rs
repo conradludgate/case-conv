@@ -3,52 +3,6 @@
 #![feature(unicode_internals)]
 use core::unicode::conversions;
 
-#[cold]
-fn to_lowercase_cold(s: &str, mut out: String) -> String {
-    for (i, c) in s[..].char_indices() {
-        if c == 'Σ' {
-            // Σ maps to σ, except at the end of a word where it maps to ς.
-            // This is the only conditional (contextual) but language-independent mapping
-            // in `SpecialCasing.txt`,
-            // so hard-code it rather than have a generic "condition" mechanism.
-            // See https://github.com/rust-lang/rust/issues/26035
-            map_uppercase_sigma(s, i, &mut out)
-        } else {
-            match conversions::to_lower(c) {
-                [a, '\0', _] => out.push(a),
-                [a, b, '\0'] => {
-                    out.push(a);
-                    out.push(b);
-                }
-                [a, b, c] => {
-                    out.push(a);
-                    out.push(b);
-                    out.push(c);
-                }
-            }
-        }
-    }
-
-    fn map_uppercase_sigma(from: &str, i: usize, out: &mut String) {
-        // See http://www.unicode.org/versions/Unicode7.0.0/ch03.pdf#G33992
-        // for the definition of `Final_Sigma`.
-        debug_assert!('Σ'.len_utf8() == 2);
-        let is_word_final = case_ignoreable_then_cased(from[..i].chars().rev())
-            && !case_ignoreable_then_cased(from[i + 2..].chars());
-        out.push_str(if is_word_final { "ς" } else { "σ" });
-    }
-
-    fn case_ignoreable_then_cased<I: Iterator<Item = char>>(mut iter: I) -> bool {
-        use core::unicode::{Case_Ignorable, Cased};
-        match iter.find(|&c| !Case_Ignorable(c)) {
-            Some(c) => Cased(c),
-            None => false,
-        }
-    }
-
-    out
-}
-
 /// Returns the lowercase equivalent of this string slice, as a new [`String`].
 pub fn to_lowercase(s: &str) -> String {
     let mut out = Vec::<u8>::with_capacity(s.len());
@@ -83,28 +37,50 @@ pub fn to_lowercase(s: &str) -> String {
     let rest = unsafe { s.get_unchecked(i..) };
 
     // Safety: We have written only valid ASCII to our vec
-    let to = unsafe { String::from_utf8_unchecked(out) };
+    let mut to = unsafe { String::from_utf8_unchecked(out) };
 
-    to_lowercase_cold(rest, to)
-}
-
-#[cold]
-fn to_uppercase_cold(s: &str, mut out: String) -> String {
-    for c in s[..].chars() {
-        match conversions::to_upper(c) {
-            [a, '\0', _] => out.push(a),
-            [a, b, '\0'] => {
-                out.push(a);
-                out.push(b);
-            }
-            [a, b, c] => {
-                out.push(a);
-                out.push(b);
-                out.push(c);
+    for (i, c) in rest.char_indices() {
+        if c == 'Σ' {
+            // Σ maps to σ, except at the end of a word where it maps to ς.
+            // This is the only conditional (contextual) but language-independent mapping
+            // in `SpecialCasing.txt`,
+            // so hard-code it rather than have a generic "condition" mechanism.
+            // See https://github.com/rust-lang/rust/issues/26035
+            map_uppercase_sigma(s, i, &mut to)
+        } else {
+            match conversions::to_lower(c) {
+                [a, '\0', _] => to.push(a),
+                [a, b, '\0'] => {
+                    to.push(a);
+                    to.push(b);
+                }
+                [a, b, c] => {
+                    to.push(a);
+                    to.push(b);
+                    to.push(c);
+                }
             }
         }
     }
-    out
+
+    fn map_uppercase_sigma(from: &str, i: usize, out: &mut String) {
+        // See http://www.unicode.org/versions/Unicode7.0.0/ch03.pdf#G33992
+        // for the definition of `Final_Sigma`.
+        debug_assert!('Σ'.len_utf8() == 2);
+        let is_word_final = case_ignoreable_then_cased(from[..i].chars().rev())
+            && !case_ignoreable_then_cased(from[i + 2..].chars());
+        out.push_str(if is_word_final { "ς" } else { "σ" });
+    }
+
+    fn case_ignoreable_then_cased<I: Iterator<Item = char>>(mut iter: I) -> bool {
+        use core::unicode::{Case_Ignorable, Cased};
+        match iter.find(|&c| !Case_Ignorable(c)) {
+            Some(c) => Cased(c),
+            None => false,
+        }
+    }
+
+    to
 }
 
 /// Returns the uppercase equivalent of this string slice, as a new [`String`].
@@ -141,9 +117,23 @@ pub fn to_uppercase(s: &str) -> String {
     let rest = unsafe { s.get_unchecked(i..) };
 
     // Safety: We have written only valid ASCII to our vec
-    let to = unsafe { String::from_utf8_unchecked(out) };
+    let mut to = unsafe { String::from_utf8_unchecked(out) };
 
-    to_uppercase_cold(rest, to)
+    for c in rest.chars() {
+        match conversions::to_upper(c) {
+            [a, '\0', _] => to.push(a),
+            [a, b, '\0'] => {
+                to.push(a);
+                to.push(b);
+            }
+            [a, b, c] => {
+                to.push(a);
+                to.push(b);
+                to.push(c);
+            }
+        }
+    }
+    to
 }
 
 #[cfg(test)]
