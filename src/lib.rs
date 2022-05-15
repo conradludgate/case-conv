@@ -7,21 +7,22 @@ pub fn to_lowercase(s: &str) -> String {
     let mut out = Vec::<u8>::with_capacity(s.len());
     let b = s.as_bytes();
 
-    const UNROLL: usize = 128;
+    // Fast path for ASCII.
+    // This first attempts to process the start of the string as ascii only.
+    // For performance, it processes the string in chunks of 32 bytes
+    const UNROLL: usize = 32;
     while out.len() + UNROLL <= b.len() {
         let n = out.len() + UNROLL;
         // Safety:
-        // we are working with ascii only at the moment
-        // so we know the exact size of the buffer
+        // we have checked the length of b and out ahead of time
         unsafe {
-            for j in out.len()..n {
-                if !b.get_unchecked(j).is_ascii() {
-                    break
-                }
+            if !b.get_unchecked(out.len()..n).iter().all(u8::is_ascii) {
+                break
             }
             for j in out.len()..n {
-                let end = out.as_mut_ptr().add(j);
-                core::ptr::write(end, b.get_unchecked(j).to_ascii_lowercase());
+                let out = out.as_mut_ptr().add(j);
+                // Safety: we know that our bytes are ascii from the check above
+                core::ptr::write(out, b.get_unchecked(j).to_ascii_lowercase());
             }
             out.set_len(n);
         }
@@ -83,21 +84,20 @@ pub fn to_lowercase(s: &str) -> String {
 pub fn to_uppercase(s: &str) -> String {
     let mut out = Vec::<u8>::with_capacity(s.len());
     let b = s.as_bytes();
-    const UNROLL: usize = 128;
+
+    const UNROLL: usize = 32;
     while out.len() + UNROLL <= b.len() {
         let n = out.len() + UNROLL;
         // Safety:
-        // we are working with ascii only at the moment
-        // so we know the exact size of the buffer
+        // we have checked the length of b and out ahead of time
         unsafe {
-            for j in out.len()..n {
-                if !b.get_unchecked(j).is_ascii() {
-                    break
-                }
+            if !b.get_unchecked(out.len()..n).iter().all(u8::is_ascii) {
+                break
             }
             for j in out.len()..n {
-                let end = out.as_mut_ptr().add(j);
-                core::ptr::write(end, b.get_unchecked(j).to_ascii_uppercase());
+                let out = out.as_mut_ptr().add(j);
+                // Safety: we know that our bytes are ascii from the check above
+                core::ptr::write(out, b.get_unchecked(j).to_ascii_uppercase());
             }
             out.set_len(n);
         }
@@ -176,6 +176,24 @@ mod tests {
 
         upper.push('Σ');
         lower.push('σ');
+
+        assert_eq!(to_lowercase(&upper), lower);
+        assert_eq!(to_uppercase(&lower), upper);
+    }
+
+    #[test]
+    fn case_conv_long() {
+        let upper = str::repeat("A", 512);
+        let lower = str::repeat("a", 512);
+
+        assert_eq!(to_lowercase(&upper), lower);
+        assert_eq!(to_uppercase(&lower), upper);
+    }
+    
+    #[test]
+    fn case_conv_long_unicode() {
+        let upper = str::repeat("É", 512);
+        let lower = str::repeat("é", 512);
 
         assert_eq!(to_lowercase(&upper), lower);
         assert_eq!(to_uppercase(&lower), upper);
