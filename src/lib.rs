@@ -1,15 +1,4 @@
-//! Fast and correct case conversion.
-//!
-//! [`to_lowercase`] offers good average case performance if your string starts mostly with ascii.
-//! It gets this speed up by assuming each byte is ascii, but then falling back to a slow correct
-//! path seamlessly if a non ascii byte is found. This can provide 5x speed improvements in common ascii cases
-//!
-//! [`to_lowercase2`] offers extremely good performance for ascii only strings, and slightly better performance
-//! (but worse than [`to_lowercase`]) in the event that unicode is found.
-//! This is achieved by checking whether the string is all ascii upfront and dispatching to a different mode depending.
-//! This auto-vectorizes a lot better and can achieve 50x speed ups in extreme cases
-//!
-//! There are also uppercase equivalents.
+#![doc = include_str!("../README.md")]
 
 #![feature(unicode_internals)]
 use core::unicode::conversions;
@@ -63,50 +52,40 @@ fn to_lowercase_cold(s: &str, mut out: String) -> String {
 /// Returns the lowercase equivalent of this string slice, as a new [`String`].
 pub fn to_lowercase(s: &str) -> String {
     let mut out = Vec::<u8>::with_capacity(s.len());
-    for (i, b) in s.as_bytes().iter().enumerate() {
-        if b & 0b1000_0000 == 0 {
-            unsafe {
-                let end = out.as_mut_ptr().add(i);
-                core::ptr::write(end, b.to_ascii_lowercase());
+    let b = s.as_bytes();
+    let mut i = 0;
+    const UNROLL: usize = 128;
+    while i + UNROLL < b.len() {
+        // Safety:
+        // we are working with ascii only at the moment
+        // so we know the exact size of the buffer
+        unsafe {
+            for j in i..i+UNROLL {
+                if !b.get_unchecked(j).is_ascii() {
+                    break
+                }
             }
-            continue;
+            for j in i..i+UNROLL {
+                let end = out.as_mut_ptr().add(j);
+                core::ptr::write(end, b.get_unchecked(j).to_ascii_lowercase());
+            }
         }
-
-        // Safety: so far we have only written i ascii bytes
-        // so the length is known
-        unsafe { out.set_len(i) };
-
-        // Safety: we know this is a valid char boundary since
-        // 1. Our iterator guarantees that this is a valid byte
-        // 2. From our loop we know this is the start of a utf8 scalar point
-        let from = unsafe { s.get_unchecked(i..) };
-
-        // Safety: We have written only valid UTF-8 to our vec
-        let to = unsafe { String::from_utf8_unchecked(out) };
-
-        return to_lowercase_cold(from, to);
+        i += UNROLL;
     }
+
+    // Safety: so far we have only written i ascii bytes
+    // so the length is known
+    unsafe { out.set_len(i) };
+
+    // Safety: we know this is a valid char boundary since
+    // 1. Our iterator guarantees that this is a valid byte
+    // 2. From our loop we know this is the start of a utf8 scalar point
+    let rest = unsafe { s.get_unchecked(i..) };
+
     // Safety: We have written only valid ASCII to our vec
-    unsafe {
-        out.set_len(s.len());
-        String::from_utf8_unchecked(out)
-    }
-}
+    let to = unsafe { String::from_utf8_unchecked(out) };
 
-/// Returns the lowercase equivalent of this string slice, as a new [`String`].
-///
-/// Functionally the same as [`to_lowercase`] but has much better performance in the
-/// ascii case, but much worse performance in the unicode case
-pub fn to_lowercase2(s: &str) -> String {
-    let mut out = Vec::with_capacity(s.len());
-    if s.is_ascii() {
-        out.extend(s.bytes().map(|b| b.to_ascii_lowercase()));
-        // Safety: We have written only valid UTF-8 (ascii) to our vec
-        unsafe { String::from_utf8_unchecked(out) }
-    } else {
-        let out = unsafe { String::from_utf8_unchecked(out) };
-        to_lowercase_cold(s, out)
-    }
+    to_lowercase_cold(rest, to)
 }
 
 #[cold]
@@ -131,53 +110,40 @@ fn to_uppercase_cold(s: &str, mut out: String) -> String {
 /// Returns the uppercase equivalent of this string slice, as a new [`String`].
 pub fn to_uppercase(s: &str) -> String {
     let mut out = Vec::<u8>::with_capacity(s.len());
-    for (i, b) in s.as_bytes().iter().enumerate() {
-        if b & 0b1000_0000 == 0 {
-            // Safety:
-            // we are working with ascii only at the moment
-            // so we know the exact size of the buffer
-            unsafe {
-                let end = out.as_mut_ptr().add(i);
-                core::ptr::write(end, b.to_ascii_uppercase());
+    let b = s.as_bytes();
+    let mut i = 0;
+    const UNROLL: usize = 128;
+    while i + UNROLL < b.len() {
+        // Safety:
+        // we are working with ascii only at the moment
+        // so we know the exact size of the buffer
+        unsafe {
+            for j in i..i+UNROLL {
+                if !b.get_unchecked(j).is_ascii() {
+                    break
+                }
             }
-            continue;
+            for j in i..i+UNROLL {
+                let end = out.as_mut_ptr().add(j);
+                core::ptr::write(end, b.get_unchecked(j).to_ascii_uppercase());
+            }
         }
-
-        // Safety: so far we have only written i ascii bytes
-        // so the length is known
-        unsafe { out.set_len(i) };
-
-        // Safety: we know this is a valid char boundary since
-        // 1. Our iterator guarantees that this is a valid byte
-        // 2. From our loop we know this is the start of a utf8 scalar point
-        let from = unsafe { s.get_unchecked(i..) };
-
-        // Safety: We have written only valid UTF-8 to our vec
-        let to = unsafe { String::from_utf8_unchecked(out) };
-
-        return to_uppercase_cold(from, to);
+        i += UNROLL;
     }
+
+    // Safety: so far we have only written i ascii bytes
+    // so the length is known
+    unsafe { out.set_len(i) };
+
+    // Safety: we know this is a valid char boundary since
+    // 1. Our iterator guarantees that this is a valid byte
+    // 2. From our loop we know this is the start of a utf8 scalar point
+    let rest = unsafe { s.get_unchecked(i..) };
+
     // Safety: We have written only valid ASCII to our vec
-    unsafe {
-        out.set_len(s.len());
-        String::from_utf8_unchecked(out)
-    }
-}
+    let to = unsafe { String::from_utf8_unchecked(out) };
 
-/// Returns the uppercase equivalent of this string slice, as a new [`String`].
-///
-/// Functionally the same as [`to_uppercase`] but has much better performance in the
-/// ascii case, but much worse performance in the unicode case
-pub fn to_uppercase2(s: &str) -> String {
-    let mut out = Vec::with_capacity(s.len());
-    if s.is_ascii() {
-        out.extend(s.bytes().map(|b| b.to_ascii_uppercase()));
-        // Safety: We have written only valid UTF-8 (ascii) to our vec
-        unsafe { String::from_utf8_unchecked(out) }
-    } else {
-        let out = unsafe { String::from_utf8_unchecked(out) };
-        to_uppercase_cold(s, out)
-    }
+    to_uppercase_cold(rest, to)
 }
 
 #[cfg(test)]
@@ -221,44 +187,5 @@ mod tests {
     fn uppercase() {
         assert_eq!(to_uppercase(""), "");
         assert_eq!(to_uppercase("aéǅßﬁᾀ"), "AÉǄSSFIἈΙ");
-    }
-
-    #[test]
-    fn lowercase2() {
-        assert_eq!(to_lowercase2(""), "");
-        assert_eq!(to_lowercase2("AÉǅaé "), "aéǆaé ");
-
-        // https://github.com/rust-lang/rust/issues/26035
-        assert_eq!(to_lowercase2("ΑΣ"), "ας");
-        assert_eq!(to_lowercase2("Α'Σ"), "α'ς");
-        assert_eq!(to_lowercase2("Α''Σ"), "α''ς");
-
-        assert_eq!(to_lowercase2("ΑΣ Α"), "ας α");
-        assert_eq!(to_lowercase2("Α'Σ Α"), "α'ς α");
-        assert_eq!(to_lowercase2("Α''Σ Α"), "α''ς α");
-
-        assert_eq!(to_lowercase2("ΑΣ' Α"), "ας' α");
-        assert_eq!(to_lowercase2("ΑΣ'' Α"), "ας'' α");
-
-        assert_eq!(to_lowercase2("Α'Σ' Α"), "α'ς' α");
-        assert_eq!(to_lowercase2("Α''Σ'' Α"), "α''ς'' α");
-
-        assert_eq!(to_lowercase2("Α Σ"), "α σ");
-        assert_eq!(to_lowercase2("Α 'Σ"), "α 'σ");
-        assert_eq!(to_lowercase2("Α ''Σ"), "α ''σ");
-
-        assert_eq!(to_lowercase2("Σ"), "σ");
-        assert_eq!(to_lowercase2("'Σ"), "'σ");
-        assert_eq!(to_lowercase2("''Σ"), "''σ");
-
-        assert_eq!(to_lowercase2("ΑΣΑ"), "ασα");
-        assert_eq!(to_lowercase2("ΑΣ'Α"), "ασ'α");
-        assert_eq!(to_lowercase2("ΑΣ''Α"), "ασ''α");
-    }
-
-    #[test]
-    fn uppercase2() {
-        assert_eq!(to_uppercase2(""), "");
-        assert_eq!(to_uppercase2("aéǅßﬁᾀ"), "AÉǄSSFIἈΙ");
     }
 }

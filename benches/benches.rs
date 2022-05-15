@@ -1,6 +1,6 @@
 use std::{fs::File, io::Read};
 
-use case_conv::{to_lowercase, to_lowercase2, to_uppercase, to_uppercase2};
+use case_conv::{to_lowercase, to_uppercase};
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 pub fn conv(c: &mut Criterion) {
@@ -23,9 +23,6 @@ pub fn conv(c: &mut Criterion) {
         g.bench_function("unicode_std", |b| {
             b.iter(|| black_box(&unicode).to_lowercase())
         });
-
-        g.bench_function("ascii2", |b| b.iter(|| to_lowercase2(black_box(&ascii))));
-        g.bench_function("unicode2", |b| b.iter(|| to_lowercase2(black_box(&unicode))));
     }
 
     {
@@ -38,9 +35,6 @@ pub fn conv(c: &mut Criterion) {
         g.bench_function("unicode_std", |b| {
             b.iter(|| black_box(&unicode).to_uppercase())
         });
-
-        g.bench_function("ascii2", |b| b.iter(|| to_uppercase2(black_box(&ascii))));
-        g.bench_function("unicode2", |b| b.iter(|| to_uppercase2(black_box(&unicode))));
     }
 }
 
