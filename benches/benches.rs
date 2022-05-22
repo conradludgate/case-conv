@@ -1,6 +1,6 @@
 use std::{fs::File, io::Read};
 
-use case_conv::{to_lowercase, to_uppercase};
+use case_conv::{is_ascii, to_lowercase, to_uppercase};
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 // these benchmarks check the improvements to ascii heavy text
@@ -14,6 +14,16 @@ pub fn conv(c: &mut Criterion) {
     // unicode is a file that contains mostly ascii with some unicode chars at the end (to check the fallback)
     let mut unicode_file = File::open("benches/macbeth.unicode.txt").unwrap();
     unicode_file.read_to_string(&mut unicode).unwrap();
+
+    {
+        let mut g = c.benchmark_group("is_ascii");
+
+        g.bench_function("case_conv", |b| {
+            b.iter(|| is_ascii(black_box(ascii.as_bytes())))
+        });
+
+        g.bench_function("std_lib", |b| b.iter(|| black_box(&ascii).is_ascii()));
+    }
 
     {
         let mut g = c.benchmark_group("lowercase");

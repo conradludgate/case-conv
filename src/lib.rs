@@ -10,36 +10,44 @@ fn contains_nonascii(v: usize) -> bool {
 }
 
 #[inline]
-unsafe fn convert_while_ascii(b: &[u8], out: &mut [mem::MaybeUninit<u8>], f: fn(&u8) -> u8) -> usize {
+/// SAFETY: N*size_of::<usize>() bytes must be valid of b
+unsafe fn is_ascii_funsafe<const N: usize>(b: *const u8) -> bool {
+    // check that the bytes are not ascii (going by chunks of usize)
+    let mut count = 0;
+    for j in 0..N {
+        let chunk = b.cast::<usize>().add(j).read_unaligned();
+        count += contains_nonascii(chunk) as usize;
+    }
+    count == 0
+}
+
+#[inline]
+unsafe fn convert_while_ascii(
+    b: &[u8],
+    out: &mut [mem::MaybeUninit<u8>],
+    f: fn(&u8) -> u8,
+) -> usize {
     debug_assert!(out.len() >= b.len());
 
-    // Fast path for ASCII.
-    // This first attempts to process the start of the string as ascii only.
-    const UNROLL: usize = mem::size_of::<usize>() * 16;
     const USIZE_SIZE: usize = mem::size_of::<usize>();
-    debug_assert_eq!(UNROLL % USIZE_SIZE, 0); // UNROLL **MUST** be a multiple of USIZE_SIZE
+    const MAGIC_UNROLL: usize = 16;
 
     let mut i = 0;
-    while i + UNROLL <= b.len() {
+    while i + USIZE_SIZE * MAGIC_UNROLL <= b.len() {
         let c = b.get_unchecked(i..);
         let o = out.get_unchecked_mut(i..);
 
-        // check that UNROLL bytes are not ascii (going by chunks of usize)
-        // grouped into 1 branch
-        let mut count = 0;
-        for j in 0..UNROLL / USIZE_SIZE {
-            let chunk = c.as_ptr().cast::<usize>().add(j).read_unaligned();
-            count += contains_nonascii(chunk) as usize;
+        if !is_ascii_funsafe::<MAGIC_UNROLL>(c.as_ptr()) {
+            return i;
         }
-        if count > 0 { return  i }
 
-        // perform the case conversions on UNROLL bytes (gets heavily autovec'd)
-        for j in 0..UNROLL {
+        // perform the case conversions on USIZE_SIZE * MAGIC_UNROLL bytes (gets heavily autovec'd)
+        for j in 0..USIZE_SIZE * MAGIC_UNROLL {
             let out = o.get_unchecked_mut(j);
             out.write(f(c.get_unchecked(j)));
         }
 
-        i += UNROLL;
+        i += USIZE_SIZE * MAGIC_UNROLL;
     }
     i
 }
@@ -139,6 +147,38 @@ pub fn to_uppercase(s: &str) -> String {
         }
     }
     to
+}
+
+pub fn is_ascii(b: &[u8]) -> bool {
+    const USIZE_SIZE: usize = mem::size_of::<usize>();
+    const MAGIC_UNROLL: usize = 16;
+
+    if b.len() < USIZE_SIZE {
+        return b.iter().all(u8::is_ascii);
+    }
+    unsafe {
+        let mut i = 0;
+
+        // on 16 usize chunks
+        while i + USIZE_SIZE * MAGIC_UNROLL <= b.len() {
+            if !is_ascii_funsafe::<MAGIC_UNROLL>(b.as_ptr().add(i)) {
+                return false;
+            }
+            i += USIZE_SIZE * MAGIC_UNROLL;
+        }
+
+        // on usize chunks
+        while i + USIZE_SIZE < b.len() {
+            if !is_ascii_funsafe::<1>(b.as_ptr().add(i)) {
+                return false;
+            }
+            i += USIZE_SIZE;
+        }
+
+        // final chunk
+        let i = b.len() - USIZE_SIZE;
+        is_ascii_funsafe::<1>(b.as_ptr().add(i))
+    }
 }
 
 #[cfg(test)]

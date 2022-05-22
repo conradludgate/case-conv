@@ -44,3 +44,18 @@ uppercase/unicode       time:   [18.875 us 19.006 us 19.210 us] *
 uppercase/ascii_std     time:   [246.35 us 247.50 us 248.85 us]
 uppercase/unicode_std   time:   [249.75 us 250.72 us 251.78 us]
 ```
+
+## is_ascii
+
+> Tests performed with a copy of the Macbeth play text
+
+> Tests performed on a Ryzen 5 3600X on Linux
+
+During the development of this lib, I discovered a way to optimise the `is_ascii` method more.
+It uses similar tricks that the std impl does, but doesn't concern itself with awkward edge cases and
+instead unrolls some of the tricks up to 16 times (in the end, doing checks on 128 bytes at a time)
+
+```text
+is_ascii/case_conv      time:   [3.7527 us 3.7584 us 3.7646 us] *
+is_ascii/std_lib        time:   [6.8951 us 6.9151 us 6.9367 us]
+```

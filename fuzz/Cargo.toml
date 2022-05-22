@@ -29,3 +29,9 @@ name = "uppercase"
 path = "fuzz_targets/uppercase.rs"
 test = false
 doc = false
+
+[[bin]]
+name = "is_ascii"
+path = "fuzz_targets/is_ascii.rs"
+test = false
+doc = false
