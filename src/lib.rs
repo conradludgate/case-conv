@@ -1,31 +1,57 @@
 #![doc = include_str!("../README.md")]
 #![feature(unicode_internals)]
 use core::unicode::conversions;
+use std::mem;
+
+#[inline]
+fn contains_nonascii(v: usize) -> bool {
+    const NONASCII_MASK: usize = 0x8080808080808080; // usize::repeat_u8(0x80);
+    (NONASCII_MASK & v) != 0
+}
+
+#[inline]
+unsafe fn convert_while_ascii(b: &[u8], out: &mut [mem::MaybeUninit<u8>], f: fn(&u8) -> u8) -> usize {
+    debug_assert!(out.len() >= b.len());
+
+    // Fast path for ASCII.
+    // This first attempts to process the start of the string as ascii only.
+    const UNROLL: usize = mem::size_of::<usize>() * 16;
+    const USIZE_SIZE: usize = mem::size_of::<usize>();
+    debug_assert_eq!(UNROLL % USIZE_SIZE, 0); // UNROLL **MUST** be a multiple of USIZE_SIZE
+
+    let mut i = 0;
+    while i + UNROLL <= b.len() {
+        let c = b.get_unchecked(i..);
+        let o = out.get_unchecked_mut(i..);
+
+        // check that UNROLL bytes are not ascii (going by chunks of usize)
+        // grouped into 1 branch
+        let mut count = 0;
+        for j in 0..UNROLL / USIZE_SIZE {
+            let chunk = c.as_ptr().cast::<usize>().add(j).read_unaligned();
+            count += contains_nonascii(chunk) as usize;
+        }
+        if count > 0 { return  i }
+
+        // perform the case conversions on UNROLL bytes (gets heavily autovec'd)
+        for j in 0..UNROLL {
+            let out = o.get_unchecked_mut(j);
+            out.write(f(c.get_unchecked(j)));
+        }
+
+        i += UNROLL;
+    }
+    i
+}
 
 /// Returns the lowercase equivalent of this string slice, as a new [`String`].
 pub fn to_lowercase(s: &str) -> String {
     let mut out = Vec::<u8>::with_capacity(s.len());
     let b = s.as_bytes();
 
-    // Fast path for ASCII.
-    // This first attempts to process the start of the string as ascii only.
-    // For performance, it processes the string in chunks of 32 bytes
-    const UNROLL: usize = 32;
-    while out.len() + UNROLL <= b.len() {
-        let n = out.len() + UNROLL;
-        // Safety:
-        // we have checked the length of b and out ahead of time
-        unsafe {
-            if !b.get_unchecked(out.len()..n).iter().all(u8::is_ascii) {
-                break
-            }
-            for j in out.len()..n {
-                let out = out.as_mut_ptr().add(j);
-                // Safety: we know that our bytes are ascii from the check above
-                core::ptr::write(out, b.get_unchecked(j).to_ascii_lowercase());
-            }
-            out.set_len(n);
-        }
+    unsafe {
+        let n = convert_while_ascii(b, out.spare_capacity_mut(), u8::to_ascii_lowercase);
+        out.set_len(n);
     }
 
     // Safety: we know this is a valid char boundary since
@@ -85,22 +111,9 @@ pub fn to_uppercase(s: &str) -> String {
     let mut out = Vec::<u8>::with_capacity(s.len());
     let b = s.as_bytes();
 
-    const UNROLL: usize = 32;
-    while out.len() + UNROLL <= b.len() {
-        let n = out.len() + UNROLL;
-        // Safety:
-        // we have checked the length of b and out ahead of time
-        unsafe {
-            if !b.get_unchecked(out.len()..n).iter().all(u8::is_ascii) {
-                break
-            }
-            for j in out.len()..n {
-                let out = out.as_mut_ptr().add(j);
-                // Safety: we know that our bytes are ascii from the check above
-                core::ptr::write(out, b.get_unchecked(j).to_ascii_uppercase());
-            }
-            out.set_len(n);
-        }
+    unsafe {
+        let n = convert_while_ascii(b, out.spare_capacity_mut(), u8::to_ascii_uppercase);
+        out.set_len(n);
     }
 
     // Safety: we know this is a valid char boundary since
@@ -165,7 +178,6 @@ mod tests {
         assert_eq!(to_lowercase("ΑΣ''Α"), "ασ''α");
     }
 
-
     #[test]
     fn long() {
         let mut upper = str::repeat("A", 128);
@@ -189,7 +201,7 @@ mod tests {
         assert_eq!(to_lowercase(&upper), lower);
         assert_eq!(to_uppercase(&lower), upper);
     }
-    
+
     #[test]
     fn case_conv_long_unicode() {
         let upper = str::repeat("É", 512);

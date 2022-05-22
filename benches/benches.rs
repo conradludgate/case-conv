@@ -3,19 +3,17 @@ use std::{fs::File, io::Read};
 use case_conv::{to_lowercase, to_uppercase};
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
+// these benchmarks check the improvements to ascii heavy text
 pub fn conv(c: &mut Criterion) {
     let mut ascii = String::new();
     let mut unicode = String::new();
-    let mut russian = String::new();
 
     let mut ascii_file = File::open("benches/macbeth.ascii.txt").unwrap();
     ascii_file.read_to_string(&mut ascii).unwrap();
 
+    // unicode is a file that contains mostly ascii with some unicode chars at the end (to check the fallback)
     let mut unicode_file = File::open("benches/macbeth.unicode.txt").unwrap();
     unicode_file.read_to_string(&mut unicode).unwrap();
-
-    let mut russian_file = File::open("benches/anna-karenina.ru.txt").unwrap();
-    russian_file.read_to_string(&mut russian).unwrap();
 
     {
         let mut g = c.benchmark_group("lowercase");
@@ -42,7 +40,8 @@ pub fn conv(c: &mut Criterion) {
     }
 }
 
-pub fn rissian(c: &mut Criterion) {
+// these benchmarks check that the unicode heavy case is not distrurbed
+pub fn russian(c: &mut Criterion) {
     let mut russian = String::new();
 
     let mut russian_file = File::open("benches/anna-karenina.ru.txt").unwrap();
@@ -65,5 +64,5 @@ pub fn rissian(c: &mut Criterion) {
     }
 }
 
-criterion_group!(benches, conv);
+criterion_group!(benches, conv, russian);
 criterion_main!(benches);
