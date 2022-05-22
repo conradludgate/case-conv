@@ -1,31 +1,65 @@
 #![doc = include_str!("../README.md")]
 #![feature(unicode_internals)]
 use core::unicode::conversions;
+use std::mem;
+
+#[inline]
+fn contains_nonascii(v: usize) -> bool {
+    const NONASCII_MASK: usize = 0x8080808080808080; // usize::repeat_u8(0x80);
+    (NONASCII_MASK & v) != 0
+}
+
+#[inline]
+/// SAFETY: N*size_of::<usize>() bytes must be valid of b
+unsafe fn is_ascii_funsafe<const N: usize>(b: *const u8) -> bool {
+    // check that the bytes are not ascii (going by chunks of usize)
+    let mut count = 0;
+    for j in 0..N {
+        let chunk = b.cast::<usize>().add(j).read_unaligned();
+        count += contains_nonascii(chunk) as usize;
+    }
+    count == 0
+}
+
+#[inline]
+unsafe fn convert_while_ascii(
+    b: &[u8],
+    out: &mut [mem::MaybeUninit<u8>],
+    f: fn(&u8) -> u8,
+) -> usize {
+    debug_assert!(out.len() >= b.len());
+
+    const USIZE_SIZE: usize = mem::size_of::<usize>();
+    const MAGIC_UNROLL: usize = 16;
+
+    let mut i = 0;
+    while i + USIZE_SIZE * MAGIC_UNROLL <= b.len() {
+        let c = b.get_unchecked(i..);
+        let o = out.get_unchecked_mut(i..);
+
+        if !is_ascii_funsafe::<MAGIC_UNROLL>(c.as_ptr()) {
+            return i;
+        }
+
+        // perform the case conversions on USIZE_SIZE * MAGIC_UNROLL bytes (gets heavily autovec'd)
+        for j in 0..USIZE_SIZE * MAGIC_UNROLL {
+            let out = o.get_unchecked_mut(j);
+            out.write(f(c.get_unchecked(j)));
+        }
+
+        i += USIZE_SIZE * MAGIC_UNROLL;
+    }
+    i
+}
 
 /// Returns the lowercase equivalent of this string slice, as a new [`String`].
 pub fn to_lowercase(s: &str) -> String {
     let mut out = Vec::<u8>::with_capacity(s.len());
     let b = s.as_bytes();
 
-    // Fast path for ASCII.
-    // This first attempts to process the start of the string as ascii only.
-    // For performance, it processes the string in chunks of 32 bytes
-    const UNROLL: usize = 32;
-    while out.len() + UNROLL <= b.len() {
-        let n = out.len() + UNROLL;
-        // Safety:
-        // we have checked the length of b and out ahead of time
-        unsafe {
-            if !b.get_unchecked(out.len()..n).iter().all(u8::is_ascii) {
-                break
-            }
-            for j in out.len()..n {
-                let out = out.as_mut_ptr().add(j);
-                // Safety: we know that our bytes are ascii from the check above
-                core::ptr::write(out, b.get_unchecked(j).to_ascii_lowercase());
-            }
-            out.set_len(n);
-        }
+    unsafe {
+        let n = convert_while_ascii(b, out.spare_capacity_mut(), u8::to_ascii_lowercase);
+        out.set_len(n);
     }
 
     // Safety: we know this is a valid char boundary since
@@ -85,22 +119,9 @@ pub fn to_uppercase(s: &str) -> String {
     let mut out = Vec::<u8>::with_capacity(s.len());
     let b = s.as_bytes();
 
-    const UNROLL: usize = 32;
-    while out.len() + UNROLL <= b.len() {
-        let n = out.len() + UNROLL;
-        // Safety:
-        // we have checked the length of b and out ahead of time
-        unsafe {
-            if !b.get_unchecked(out.len()..n).iter().all(u8::is_ascii) {
-                break
-            }
-            for j in out.len()..n {
-                let out = out.as_mut_ptr().add(j);
-                // Safety: we know that our bytes are ascii from the check above
-                core::ptr::write(out, b.get_unchecked(j).to_ascii_uppercase());
-            }
-            out.set_len(n);
-        }
+    unsafe {
+        let n = convert_while_ascii(b, out.spare_capacity_mut(), u8::to_ascii_uppercase);
+        out.set_len(n);
     }
 
     // Safety: we know this is a valid char boundary since
@@ -126,6 +147,38 @@ pub fn to_uppercase(s: &str) -> String {
         }
     }
     to
+}
+
+pub fn is_ascii(b: &[u8]) -> bool {
+    const USIZE_SIZE: usize = mem::size_of::<usize>();
+    const MAGIC_UNROLL: usize = 16;
+
+    if b.len() < USIZE_SIZE {
+        return b.iter().all(u8::is_ascii);
+    }
+    unsafe {
+        let mut i = 0;
+
+        // on 16 usize chunks
+        while i + USIZE_SIZE * MAGIC_UNROLL <= b.len() {
+            if !is_ascii_funsafe::<MAGIC_UNROLL>(b.as_ptr().add(i)) {
+                return false;
+            }
+            i += USIZE_SIZE * MAGIC_UNROLL;
+        }
+
+        // on usize chunks
+        while i + USIZE_SIZE < b.len() {
+            if !is_ascii_funsafe::<1>(b.as_ptr().add(i)) {
+                return false;
+            }
+            i += USIZE_SIZE;
+        }
+
+        // final chunk
+        let i = b.len() - USIZE_SIZE;
+        is_ascii_funsafe::<1>(b.as_ptr().add(i))
+    }
 }
 
 #[cfg(test)]
@@ -165,7 +218,6 @@ mod tests {
         assert_eq!(to_lowercase("ΑΣ''Α"), "ασ''α");
     }
 
-
     #[test]
     fn long() {
         let mut upper = str::repeat("A", 128);
@@ -189,7 +241,7 @@ mod tests {
         assert_eq!(to_lowercase(&upper), lower);
         assert_eq!(to_uppercase(&lower), upper);
     }
-    
+
     #[test]
     fn case_conv_long_unicode() {
         let upper = str::repeat("É", 512);
