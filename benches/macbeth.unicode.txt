@@ -2299,7 +2299,7 @@ First Murderer
     Well, let's away, and say how much is done.
 
     Exeunt
-
+农历新年
 SCENE IV. The same. Hall in the palace.
 
     A banquet prepared. Enter MACBETH, LADY MACBETH, ROSS, LENNOX, Lords, and Attendants 
@@ -4729,4 +4729,3 @@ MALCOLM
     Whom we invite to see us crown'd at Scone.
 
     Flourish. Exeunt
-农历新年

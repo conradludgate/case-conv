@@ -26,6 +26,28 @@ pub fn conv(c: &mut Criterion) {
     }
 
     {
+        let mut g = c.benchmark_group("is_ascii_small");
+
+        g.bench_function("case_conv", |b| b.iter(|| {
+            black_box(ascii.split('.').map(|s| is_ascii(s.as_bytes())).collect::<Vec<_>>())
+        }));
+        g.bench_function("std_lib", |b| b.iter(|| {
+            black_box(ascii.split('.').map(str::is_ascii).collect::<Vec<_>>())
+        }));
+    }
+
+    {
+        let mut g = c.benchmark_group("lowercase_small");
+
+        g.bench_function("case_conv", |b| b.iter(|| {
+            black_box(ascii.split('.').map(to_lowercase).collect::<Vec<_>>())
+        }));
+        g.bench_function("std_lib", |b| b.iter(|| {
+            black_box(ascii.split('.').map(str::to_lowercase).collect::<Vec<_>>())
+        }));
+    }
+
+    {
         let mut g = c.benchmark_group("lowercase");
 
         g.bench_function("ascii", |b| b.iter(|| to_lowercase(black_box(&ascii))));
